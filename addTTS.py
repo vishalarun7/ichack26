@@ -11,7 +11,7 @@ import os
 
 # --- API KEY SETUP ---
 # user explicitly requested reading from ~/KEY.txt using absolute path
-key_file_path = os.path.expanduser("~/KEY.txt")
+key_file_path = os.path.expanduser("~/KEY1.txt")
 
 try:
     with open(key_file_path, "r") as f:
@@ -58,7 +58,7 @@ def speak_text(text):
         audio_bytes = b"".join(audio_generator)
 
         # 3. Save to File
-        filename = "output.mp3"
+        filename = "/home/pi/ichack/output.mp3"
         with open(filename, "wb") as f:
             f.write(audio_bytes)
         
