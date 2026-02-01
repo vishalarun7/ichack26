@@ -5,13 +5,13 @@ from elevenlabs.client import ElevenLabs
 import time
 import os
 
-# =========================
-# 1) CONFIGURATION
-# =========================
+
+# CONFIGURATION
+
 
 # --- API KEY SETUP ---
 # user explicitly requested reading from ~/KEY.txt using absolute path
-key_file_path = os.path.expanduser("~/KEY1.txt")
+key_file_path = os.path.expanduser("~/KEY.txt")
 
 try:
     with open(key_file_path, "r") as f:
@@ -33,9 +33,9 @@ except Exception as e:
     print(f"[ERROR] NFC Init Failed: {e}")
     exit()
 
-# =========================
-# 2) FUNCTIONS
-# =========================
+
+# FUNCTIONS
+
 
 def speak_text(text):
     """
@@ -47,22 +47,22 @@ def speak_text(text):
     print(f"Generating audio for: '{text}'...")
     
     try:
-        # 1. Generate Audio Stream
+        # Generate Audio Stream
         audio_generator = client.text_to_speech.convert(
             voice_id="hpp4J3VqNfWAUOO0d1Us", 
             text=text,
             model_id="eleven_monolingual_v1"
         )
 
-        # 2. Convert Stream to Bytes
+        # Convert Stream to Bytes
         audio_bytes = b"".join(audio_generator)
 
-        # 3. Save to File
+        # Save to File
         filename = "/home/pi/ichack/output.mp3"
         with open(filename, "wb") as f:
             f.write(audio_bytes)
         
-        # 4. Play the File (using mpg123)
+        # Play the File (using mpg123)
         print("Playing audio...")
         os.system(f"mpg123 -q {filename}")
 
@@ -86,9 +86,8 @@ def get_nfc_text():
         print(f"Error reading NFC: {e}")
         return None
 
-# =========================
-# 3) MAIN LOOP
-# =========================
+# MAIN LOOP
+
 if __name__ == "__main__":
     print("--------------------------------")
     print("NFC Speaker Active (Ctrl+C to quit)")
