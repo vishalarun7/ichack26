@@ -9,10 +9,8 @@ import os
 import threading
 from enum import Enum
 
-# =========================
-# 1) CONFIGURATION (PHYSICAL PINS)
-# =========================
-# The NFC Library forces BOARD mode, so we use Physical Pin numbers.
+
+# CONFIGURATION (PHYSICAL PINS)
 
 # --- LCD PINS (BOARD Mode) ---
 LCD_RS = 37
@@ -33,7 +31,7 @@ MODE_BUTTON_PIN = 7      # Physical Pin 7
 TRIGGER_BUTTON_PIN = 13  # Physical Pin 13
 
 # --- API KEY ---
-key_file_path = os.path.expanduser("~/KEY.txt")
+key_file_path = "/home/pi/KEY.txt"
 try:
     with open(key_file_path, "r") as f:
         ANTHROPIC_API_KEY = f.read().strip()
@@ -46,13 +44,7 @@ MODEL_ID = "claude-haiku-4-5-20251001"
 # --- GLOBAL STATE ---
 lcd_lock = threading.Lock()   
 scan_lock = threading.Lock()  
-display_timer = None          
-
-# --- NFC READER OBJECT ---
-try:
-    reader = SimpleMFRC522()
-except Exception as e:
-    print(f"[ERROR] NFC Init Failed: {e}")
+display_timer = None
 
 class Mode(Enum):
     MODE_1 = "Text Reading"
@@ -67,9 +59,8 @@ current_mode = Mode.MODE_1
 current_state = AppState.IDLE
 last_result_text = ""
 
-# =========================
-# 2) NFC FUNCTIONS
-# =========================
+# NFC FUNCTIONS
+
 def writeNfc(text):
     print("\n[NFC] Initializing write...")
     try:
@@ -101,7 +92,6 @@ def readNfc():
         
         print(f"\n[NFC RESULT] ID: {id} | Text: {clean_text}")
         
-        # --- IMPROVED DISPLAY LOGIC ---
         safe_lcd_clear()
         safe_lcd_write("Read Success!", "Showing Data...")
         time.sleep(1.0)
@@ -122,9 +112,9 @@ def readNfc():
         time.sleep(2)
         reset_to_ready()
 
-# =========================
-# 3) LCD FUNCTIONS
-# =========================
+
+# LCD FUNCTIONS
+
 def lcd_toggle_enable():
     time.sleep(E_DELAY)
     GPIO.output(LCD_E, True)
@@ -161,7 +151,10 @@ def lcd_write_line(addr, s):
         lcd_byte(ord(ch), True)
 
 def lcd_init():
+    # Force the mode to BOARD (Physical Pins) at the very start
+    GPIO.setmode(GPIO.BOARD) 
     GPIO.setwarnings(False)
+    
     for pin in (LCD_RS, LCD_E, LCD_D4, LCD_D5, LCD_D6, LCD_D7):
         GPIO.setup(pin, GPIO.OUT)
     
@@ -181,9 +174,8 @@ def safe_lcd_clear():
     with lcd_lock:
         lcd_clear()
 
-# =========================
-# 4) AI & CAMERA LOGIC
-# =========================
+# AI & CAMERA LOGIC
+
 def analyze_current_view():
     global current_mode
     if not cam.isOpened():
@@ -227,9 +219,9 @@ def analyze_current_view():
         print(f"[ERROR] API Call failed: {e}")
         return None
 
-# =========================
+
 # 5) SHARED SCAN FUNCTION
-# =========================
+
 def reset_to_ready():
     global current_state
     current_state = AppState.IDLE
@@ -267,9 +259,9 @@ def perform_scan():
     finally:
         scan_lock.release()
 
-# =========================
+
 # 6) BUTTON THREADS
-# =========================
+
 def monitor_mode_button():
     """Cycles Mode (Physical Pin 7)"""
     GPIO.setup(MODE_BUTTON_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
@@ -305,17 +297,15 @@ def monitor_trigger_button():
         
         if last_gpio_state == GPIO.HIGH and current_gpio_state == GPIO.LOW:
             
-            # === LOGIC START ===
             
-            # --- STATE: IDLE (Modified for Double Tap) ---
             if current_state == AppState.IDLE:
                 print("\n[IDLE] Button pressed... Waiting for double tap...")
                 
-                # 1. Wait for release of 1st press
+                # Wait for release of 1st press
                 while GPIO.input(TRIGGER_BUTTON_PIN) == GPIO.LOW:
                     time.sleep(0.01)
                 
-                # 2. Check for 2nd press within 400ms
+                # Check for 2nd press within 400ms
                 start_time = time.time()
                 double_tap = False
                 while (time.time() - start_time) < 0.4:
@@ -324,7 +314,7 @@ def monitor_trigger_button():
                         break
                     time.sleep(0.01)
                 
-                # 3. Action
+                # Action
                 if double_tap:
                     print("[IDLE] Double Tap Detected -> READ NFC")
                     # Wait for 2nd release
@@ -368,13 +358,33 @@ def monitor_trigger_button():
         last_gpio_state = current_gpio_state
         time.sleep(0.05)
 
-# =========================
-# 7) MAIN LOOP
-# =========================
+# MAIN LOOP
+
 if __name__ == "__main__":
+    
     lcd_init()
     safe_lcd_write("System Booting...")
     
+    print("Waiting for hardware to stabilize...")
+    time.sleep(2) # Give the electrical power time to settle
+    
+    # Manually drive the Reset Pin (Pin 22) low then high
+    RST_PIN = 22
+    try:
+        GPIO.setup(RST_PIN, GPIO.OUT)
+        GPIO.output(RST_PIN, GPIO.LOW)
+        time.sleep(0.1)
+        GPIO.output(RST_PIN, GPIO.HIGH)
+        time.sleep(0.1)
+        
+        
+        global reader
+        reader = SimpleMFRC522()
+        print("NFC Reader Initialized Successfully.")
+    except Exception as e:
+        print(f"[FATAL ERROR] NFC Init Failed: {e}")
+    
+
     print("Initializing Claude Client...")
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     
@@ -393,34 +403,18 @@ if __name__ == "__main__":
     reset_to_ready()
 
     print("-----------------------------------")
-    print("System Ready (BOARD MODE).")
-    print("--- IDLE STATE ---")
-    print("1 Tap  -> Take Picture (Scan)")
-    print("2 Taps -> Read NFC Tag (Displays on Screen)")
-    print("--- CONFIRM STATE (After Scan) ---")
-    print("1 Tap  -> Write Result to NFC")
-    print("2 Taps -> Cancel / Drop Result")
+    print("System Ready (HEADLESS MODE).")
     print("-----------------------------------")
 
     try:
         while True:
-            # Main thread monitors keyboard as backup
-            user_input = input("> ").strip().lower()
-            if user_input == 'read' or user_input == '':
-                perform_scan()
-            elif user_input == 'nfc':
-                readNfc()
-            elif user_input == 'q':
-                print("Exiting...")
-                safe_lcd_clear()
-                safe_lcd_write("Goodbye!")
-                time.sleep(1)
-                break
+            time.sleep(1)
 
     except KeyboardInterrupt:
         print("\nExiting...")
 
     finally:
-        cam.release()
+        if 'cam' in locals() and cam.isOpened():
+            cam.release()
         safe_lcd_clear()
         GPIO.cleanup()
